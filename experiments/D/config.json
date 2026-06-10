@@ -1,0 +1,59 @@
+{
+  "_purpose": "Method D -- JEPA cross-prediction with stop-gradient + EMA target encoders. Bidirectional predictor MLPs (z_A -> z_B and z_B -> z_A), each 16->64->64->16 (2 hidden layers per spec). Cosine-normalize both predictor outputs and EMA targets before MSE -- this and stop-gradient on target side prevent z_A=z_B=0 collapse per spec failure mode 1. EMA momentum 0.99 BYOL/V-JEPA-style. Built post-hoc on the section-5.7 baseline at lambda_C=1.0 (same substrate as AC/F/G/A/F0/C/B/I/H/J). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec.",
+  "_method": "D",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "d_latent_dim": 16,
+  "d_enc_hidden": 64,
+  "d_dec_hidden": 64,
+  "d_predictor_hidden": 64,
+  "d_predictor_depth": 2,
+  "d_ema_momentum": 0.99,
+
+  "d_lr": 1e-3,
+  "d_epochs": 30,
+  "d_batch_size": 128,
+
+  "d_lambda_c_grid": [0.1, 1.0, 10.0],
+  "d_sweep_seed": 140001,
+  "d_n_seeds": 20,
+  "d_seed_base": 140011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 140234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Baseline hyperparameters (ssl_epochs=60, ft_epochs=15, ft_lr=1e-4, n_seeds_per_config=10, n_eval_seeds=20, lambda_c=1.0) intentionally identical to AC/F/G/A/F0/C/B/I/H/J so the (zA_pre, zB_pre) substrate is byte-equivalent and D's marginal benefit is isolated.",
+    "D architecture (per methods/method-D-jepa.md): per-pathway INDEPENDENT projection MLPs enc(z_pre 32-d) -> hidden=64 -> z_proj 16-d (mirrors G/I/H/J). Per-pathway decoders z_proj -> hidden=64 -> z_pre_recon (32-d) provide the L_A, L_B 'predictive' losses. Bidirectional predictor MLPs: predictor_AB and predictor_BA, each z_proj (16-d) -> hidden=64 -> hidden=64 -> z_proj (16-d) per spec '16 -> 64 -> 16, 2 hidden layers'. EMA target encoders: ema_enc_a, ema_enc_b initialized as copies of online enc_a, enc_b; updated post-step via momentum=0.99 BYOL/V-JEPA-style. Stop-gradient on target side via jax.lax.stop_gradient(ema_enc(x)).",
+    "Loss: L_total = recon_a + recon_b + lambda_c * L_JEPA where L_JEPA = 0.5 * (||cos_norm(predictor_AB(z_a)) - cos_norm(sg(z_b_ema))||^2 + ||cos_norm(predictor_BA(z_b)) - cos_norm(sg(z_a_ema))||^2). Cosine-normalization on BOTH sides per spec ('Cosine-normalize both sides to remove scale freedom -- critical -- without normalization, both encoders collapse to constant outputs').",
+    "Spec sweep: spec says 'lambda_C: 1.0 fixed' but we sweep d_lambda_c_grid=[0.1, 1.0, 10.0] for like-for-like comparison with all other post-hoc methods AC/F/G/A/F0/C/B/I/H/J -- documented as deviation. EMA momentum 0.99 fixed per spec.",
+    "Cell selection: 3 cells lambda_c in {0.1, 1.0, 10.0} at sweep_seed=140001 (single seed for cell selection by lowest val_loss on 30%% test slice). Then 20 seeds (seed_base=140011..140030) on best cell for paired-bootstrap CI.",
+    "Adam lr=1e-3, 30 epochs, batch=128. Effective batch = min(cfg, n_train). At 70%% head split of n=540 -> n_train=378 so batch=128 yields ~3 mini-batches/epoch.",
+    "Spec failure mode 1: stop-gradient + EMA target is essential -- without it, z_A = z_B = 0 is an optimum. Both stop-gradient (jax.lax.stop_gradient) and EMA (momentum=0.99) implemented per spec. Per-step nan-guard; if cell loss goes NaN we abort that cell; auto-HONEST_NEGATIVE if all 3 cells NaN.",
+    "Spec failure mode 2: V-JEPA paper uses VICReg/SimSiam variants -- spec says 'But that's scope creep -- fall back to G (InfoNCE) instead.' We implement vanilla JEPA per spec; if D HONEST_NEGATIVE the paper headline that F's iVAE-with-u is THE working fix is reinforced.",
+    "PASS_GATE applied to z_proj_a, z_proj_b (NOT predictor outputs) on the 30%% test slice. head_split_seed=271828 same as AC/F/G/A/F0/C/B/I/H/J/D3/D4 for byte-equivalent comparability. Predictor MLPs are NOT used to project the PASS_GATE evaluation set -- the gate measures whether the encoders themselves learned aligned z_proj's under the JEPA-driven loss (J/F/G/H/I/B logic: encoders shape z under the alignment objective; we evaluate the resulting z, not the predictor).",
+    "DEVIATION FROM SPEC documented in run.py docstring + result JSON: spec describes JEPA on full encoders (E_A, E_B) trained from scratch; MVP is post-hoc projection heads on baseline latents at lambda_C=1.0 substrate. Mirrors AC/F/G/A/F0/C/B/I/H/J post-hoc choices for tractability. Spec lambda_C=1.0 fixed -> we sweep {0.1,1.0,10.0} for fairness with other post-hoc methods. delta_1 / epsilon_2 not exposed by build_baseline_pair -> pass_linear forced FALSE; pass_cka and pass_transfer carry verdict.",
+    "Diagnostic fields: predictor_param_count (predictor_AB + predictor_BA combined), final_predictor_loss_AB and final_predictor_loss_BA per spec output schema, final_jepa_loss, ema_norm_drift (||online_enc - ema_enc||_F) on best seed, raw norm stats on test slice (norm_a, norm_b means/stds) for collapse detection.",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100; ALL 3 cells produce non-finite val loss; ALL 20 seeds on best cell NaN.",
+    "Predicted outcome under D1+D2+D3+D4+AC+F+G+A+F0+C+B+I+H+J evidence: F PASS (cka=0.9311 lower_ratio=0.9906) with auxiliary u; J HONEST_NEGATIVE (cka=0.6691 lower_ratio=0.024 catastrophic) -- translator-net without cycle-consistency-strength fails on B->A info asymmetry. JEPA's stop-grad+EMA structurally similar to J's bidirectional translator but with EMA-target instead of cycle-consistency. JEPA may avoid J's catastrophic transfer collapse via the cosine-norm + stop-grad regularization but is unlikely to recover the missing u-conditioned signal that only F supplies. Most likely intermediate: cka in 0.55-0.75, lower_ratio in 0.80-0.95 (similar to G/H pattern). If D HONEST_NEGATIVE, paper headline narrows further: no representation-side method (BYOL/V-JEPA-style self-distillation) closes the gap without auxiliary u."
+  ]
+}

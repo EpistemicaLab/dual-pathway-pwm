@@ -1,0 +1,41 @@
+{
+  "_purpose": "Method E -- Equivariant by construction. POST-HOC surrogate: deterministic orbit-averaging projection over a discrete cyclic group acting on z_a_pre, z_b_pre (32-d section-5.7 baseline latents at lambda_C=1.0). Spec describes joint encoder retraining with e2cnn-equivariant CNN replacing the standard CNN on pathway B. MVP applies orbit-invariant features post-hoc instead -- mirrors AC/F/G/A/F0/C/B/I/H/J/D post-hoc choice. Sweep group in {C2 (sign-flip), C4 (pair-rotation), C2xC4 (both)}; pick best by val auroc-mean. No training -- fully deterministic projection. PASS_GATE 4-gate evaluator per the original spec.",
+  "_method": "E",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "e_groups": ["C2", "C4", "C2xC4"],
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 150234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Baseline hyperparameters (ssl_epochs=60, ft_epochs=15, ft_lr=1e-4, n_seeds_per_config=10, n_eval_seeds=20, lambda_c=1.0) intentionally identical to AC/F/G/A/F0/C/B/I/H/J/D so the (zA_pre, zB_pre) substrate is byte-equivalent and E's marginal benefit is isolated against the same baseline that produced D1 cka=0.6475.",
+    "E architecture (per methods/method-E-equivariant.md): spec calls for retraining pathway-A as time-translation-equivariant MLP and pathway-B as rotation-equivariant CNN via e2cnn (Cohen 2019) or escnn (Geiger 2022). Spec sweep groups C4, C8, SO(2). Spec also flags 'High architectural risk: if e2cnn version mismatches with JAX, can take days to debug. PARK as HONEST_NEGATIVE if 3 attempts cannot get the import + smoke run working.'",
+    "MVP DEVIATION: post-hoc orbit-averaging projection on baseline latents -- no encoder retraining, no e2cnn dependency. For each group g acting on R^32, project z_pre to its orbit-invariant feature vector phi_g(z). C2 (sign-flip per component): phi(z)_i = |z_i| (32-d). C4 (pair-rotation): partition z into 16 pairs (z_2i, z_2i+1), use orbit-invariant power-sum (z_2i^2 + z_2i+1^2), output 16-d. C2xC4 stacks both -> 48-d. By construction, phi_g(g.z) = phi_g(z) for any g in the chosen group, so basis-ambiguity ALONG the group orbits is removed.",
+    "Cell selection: 3 cells in e_groups list at single deterministic projection (no seeds needed -- the projection is data-deterministic). Pick best cell by lowest probe_auroc_A loss = 1 - mean(within-pathway auroc_A); ties broken by group_order ascending.",
+    "PASS_GATE applied to phi_g(z_a_pre), phi_g(z_b_pre) on the 30%% test slice. head_split_seed=271828 same as AC/F/G/A/F0/C/B/I/H/J/D/D3/D4. Per-bit logreg probes train on 70%% train slice. CKA with 1000-bootstrap CI on test split.",
+    "DEVIATION FROM SPEC documented in run.py docstring + result JSON: spec describes joint encoder retraining with e2cnn-equivariant CNN; MVP is post-hoc orbit-averaging projection on baseline latents. Spec sweeps {C4, C8, SO(2)}; we sweep {C2, C4, C2xC4} -- C2 (sign-flip) is included because 1D Duffing-slider has a Z_2 reflection symmetry (x -> -x) which is the simplest non-trivial group. C8 and SO(2) require 2D-vector partitioning and continuous-orbit averaging respectively; both require encoder retraining (no closed-form orbit-invariant). delta_1 / epsilon_2 not exposed by build_baseline_pair -> pass_linear forced FALSE; pass_cka and pass_transfer carry verdict.",
+    "Diagnostic fields: equivariance_group (winning group label), equivariance_residual (mean ||phi_g(g.z) - phi_g(z)||^2 for sampled g in G; 0 by construction for our orbit-invariant projections, reported as 0.0 with explanatory note), proj_dim (output dimension after orbit projection), per-pathway raw norms before/after projection.",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100; ALL group cells produce non-finite auroc_A.",
+    "Predicted outcome under D1+D2+D3+D4+AC+F+G+A+F0+C+B+I+H+J+D evidence: F PASS (cka=0.9311 lower_ratio=0.9906) with auxiliary u; B PASS (cka=0.5884 lower_ratio=0.9189 mean-only) and H PASS (cka=0.5748 lower_ratio=0.9804) via transport-based alignment; D HONEST_NEGATIVE (cka=0.6526 lower_ratio=0.062 catastrophic). E's orbit-averaging is structurally similar to A/I/J's k=16-projection failure mode (throws away within-pathway discriminative info needed for linear-probe transfer) -- predicted intermediate: c1_pass possibly FAILs (probe_auroc may drop below 0.95 because magnitude/power-sum features lose sign+phase info), or if c1_pass passes then cka likely <0.90 and lower_ratio <0.95 -> HONEST_NEGATIVE. If E HONEST_NEGATIVE on this baseline, the paper headline is reinforced: equivariance-by-construction at the projection level is not sufficient; need either F's auxiliary u or B/H's symmetric transport. Spec called this out: 'enforced equivariance limits expressivity and can hurt AUROC.'"
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "_purpose": "Method B — Procrustes-MSE alignment (Schönemann 1966) with INDEPENDENT per-pathway projection MLPs g_A, g_B. Per-batch SVD of cross-covariance gives orthogonal R; MSE between R @ H_a and H_b. Trained post-hoc on §5.7 baseline at lambda_C=1.0 (fix-knob ON). PASS_GATE 4-gate evaluator per the original spec.",
+  "_method": "B",
+
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "proj_depth": 2,
+  "proj_hidden": 64,
+  "proj_output_dim": 16,
+  "decoder_depth": 2,
+  "decoder_hidden": 64,
+  "procrustes_lr": 1e-3,
+  "procrustes_epochs": 30,
+
+  "lambda_c_grid": [0.1, 1.0, 10.0],
+  "sweep_seed": 95001,
+  "procrustes_n_seeds": 20,
+  "procrustes_seed_base": 95011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 95234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Hyperparameters of the underlying §5.7 baseline (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds, lambda_c=1.0) intentionally identical to AC/F/G/A/F0/C so the (z_a_pre, z_b_pre) substrate is byte-equivalent and B's marginal benefit is isolated.",
+    "B architecture per methods/method-B-procrustes.md: per-pathway INDEPENDENT projection MLPs g_A, g_B (depth=2, hidden=64, output_dim=16) trained jointly. Per-batch Procrustes alignment R = U @ Vt where (U, _, Vt) = svd(H_b.T @ H_a) (Schönemann 1966 closed-form) — R is orthogonal, handles rotation but not scaling/shearing. If basis-ambiguity is the §5.7 mechanism, B should PASS; if nonlinear-parametrization, B fails similarly to MSE.",
+    "Loss: L = L_A_recon + L_B_recon + lambda_C * L_Procrustes where L_Procrustes = mean ||R @ H_a - H_b||^2 with R computed on the same batch via differentiable SVD. Spec calls batch=128 for stable cross-covariance; full-batch on n_train=378 fits trivially in L40S memory and is more stable for SVD on small-n (deviation noted).",
+    "Per-pathway decoder MLPs (depth=2, hidden=64) reconstruct z_pre (32-d) for L_A_recon, L_B_recon predictive terms — mirrors A's structure for like-for-like comparability.",
+    "Hyperparameter sweep per spec methods/method-B-procrustes.md: lambda_C in {0.1, 1.0, 10.0} = 3 cells at sweep_seed=95001 (single seed for cell selection by lowest val_loss), then 20 seeds (seed_base=95011..95030) on best cell for paired-bootstrap CI.",
+    "Adam lr=1e-3, 30 epochs full-batch (per spec). DEVIATION FROM SPEC documented in run.py docstring: spec describes joint encoder + g_A/g_B training from scratch with Procrustes-MSE replacing L_C. Implementation is POST-HOC: pretrained encoders at lambda_C=1.0 (already L_C-aligned per E1's joint_dual_finetune_with_lc), then post-hoc independent g_A/g_B + Procrustes + reconstruction on the baseline latents. Mirrors AC/F/G/A/F0/C post-hoc choice for like-for-like comparison. proj_output_dim=16 follows spec k=16 latent-dim.",
+    "Head split: 70% of n_eval_paired=540 used to fit BOTH the projection MLPs AND the per-bit logistic probes; 30% held out for PASS_GATE evaluation (no leakage). split_seed=271828 same as AC/F/G/A/F0/C/D3/D4 for like-for-like comparability.",
+    "PASS_GATE per the original spec evaluator: c1_pass = probe_auroc_A>=0.95 AND probe_auroc_B>=0.95; pass_linear = c1_pass AND delta_1<=0.20 AND epsilon_2<=0.10; pass_cka = c1_pass AND cka>=0.90; pass_transfer = c1_pass AND probe_transfer_auroc >= 0.95 * within_pathway_auroc; PASS if any gate; else HONEST_NEGATIVE.",
+    "delta_1 (linear-translator residual A->B) and epsilon_2 (orthogonal-projection residual) NOT computed in MVP: require §5.7-specific quantities not exposed by build_baseline_pair. Emitted as null with explanatory note. pass_linear is gated to False; pass_cka and pass_transfer can still PASS the method.",
+    "DIAGNOSTIC procrustes_R_norm field per spec: should be <= 1+epsilon since R orthogonal (verifies SVD numerical stability).",
+    "HONEST_NEGATIVE conditions per spec: n_eval_paired<100 (mirrors D-series floor); ALL 3 sweep cells produce non-finite val_loss; ALL 20 seeds on best cell NaN.",
+    "Combined D1+D2+D3+D4+AC+F+G+A+F0+C evidence preserved verbatim in state.gating.evidence and history. Predicted outcome under joint evidence: B is strictly weaker than A (orthogonal R vs DeepCCA's full canonical correlation, both basis-ambiguity fixes). A HONEST_NEGATIVE (cka=0.7168, lower_ratio=0.1999 — k=16 projection collapsed transfer) and AC HONEST_NEGATIVE (cka=0.5771, lower_ratio=0.9020) already showed basis-ambiguity is NOT the dominant mechanism. F0 HONEST_NEGATIVE (cka=0.4615 — even iVAE without u falls below D1 baseline). Most likely B HONEST_NEGATIVE with cka in 0.5-0.75 band similar to A/AC. Publication-worthy as the canonical Schönemann 1966 fix being insufficient on this pair."
+  ]
+}

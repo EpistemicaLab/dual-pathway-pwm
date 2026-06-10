@@ -1,0 +1,49 @@
+{
+  "_purpose": "Method AC — DeepCCA loss + weight-shared g_theta core. Trained on top of the §5.7 baseline at lambda_C=1.0 (fix-knob ON). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec.",
+  "_method": "AC",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "g_theta_depth": 2,
+  "g_theta_hidden": 64,
+  "g_theta_output_dim": 32,
+  "deepcca_whitening_reg": 1e-4,
+  "deepcca_lr": 1e-3,
+  "deepcca_epochs": 30,
+  "deepcca_n_seeds": 20,
+  "deepcca_seed_base": 91011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 91234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Hyperparameters of the underlying §5.7 baseline (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds) intentionally identical to D1/D2/D3/D4 so the base (zA_pre, zB_pre) substrate is byte-equivalent and AC's marginal benefit is isolated. Distinction: lambda_c=1.0 here vs lambda_c=0.0 in D1-D4 (the fix-knob is ON for AC per spec).",
+    "g_theta MLP per spec methods/method-AC-deepcca-shared.md: depth=2 (best-guess from method-C sweep), hidden=64, output_dim=32 matches LATENT_DIM. SAME WEIGHTS applied to z_A_pre and z_B_pre (true weight-tying, not just same architecture).",
+    "DeepCCA loss (Andrew+ 2013): for centered H_A=g(zA), H_B=g(zB), compute Sigma_AA + r*I and Sigma_BB + r*I (r=1e-4), then T = Sigma_AA^{-1/2} Sigma_AB Sigma_BB^{-1/2}, loss = -trace((T'T)^{1/2}) = -sum(svd(T).S). Whitening regularizer r=1e-4 per spec.",
+    "Adam lr=1e-3, 30 epochs full-batch (head_train slice fits trivially). 20 seeds vary g_theta init only; pretrained encoder substrate is fixed (one build_baseline_pair() call).",
+    "DEVIATION FROM SPEC documented in run.py docstring: spec describes joint encoder+g_theta training with DeepCCA + L_C at lambda_C=1.0. Implementation is POST-HOC: pretrained encoders at lambda_C=1.0 (already L_C-aligned per E1's joint_dual_finetune_with_lc), then post-hoc shared g_theta + DeepCCA. Trade-off: cheaper (no encoder retrain per seed) but evaluates AC as marginal benefit on top of L_C-aligned base rather than as combined from-scratch fix. Rationale: 20-seed CI on g_theta init captures head variance; encoder substrate is the §5.7 fix-knob ON condition the spec already specifies via lambda_C=1.0. Owner can flip to joint training if the post-hoc result is ambiguous.",
+    "Head split: 70% of n_eval_paired=540 used to fit BOTH g_theta (DeepCCA) AND the per-bit logistic probes; 30% held out for PASS_GATE evaluation (no leakage). split_seed=271828 same as D3/D4 train/val split.",
+    "PASS_GATE per the original spec PASS_GATE evaluator: c1_pass = probe_auroc_A>=0.95 AND probe_auroc_B>=0.95; pass_linear = c1_pass AND delta_1<=0.20 AND epsilon_2<=0.10; pass_cka = c1_pass AND cka>=0.90; pass_transfer = c1_pass AND probe_transfer_auroc >= 0.95 * within_pathway_auroc; PASS if any gate; else HONEST_NEGATIVE.",
+    "delta_1 (linear-translator residual, A->B) and epsilon_2 (orthogonal-projection residual) NOT computed in this MVP: they require §5.7-specific quantities not exposed by build_baseline_pair. Emitted as null with explanatory note. pass_linear is gated to False; pass_cka and pass_transfer can still PASS the method.",
+    "HONEST_NEGATIVE conditions per spec: n_eval_paired < 100 (mirrors D-series floor); DeepCCA loss diverges (NaN); per-bit probes degenerate on >50% of bits.",
+    "Combined D1+D2+D3+D4 evidence preserved verbatim in state.gating.evidence and history; predicts AC will PASS on cka and possibly transfer if the dominant mechanism is nonlinear-parametrization (D1 rbf>>linear, D2 strong euc-rsa, D3 partial-linear band, D4 A->B depth-4 PASS); will likely FAIL if mechanism is information-mismatch (D4 B->A never PASS = unrecoverable info gap that no shared g_theta can fabricate)."
+  ]
+}

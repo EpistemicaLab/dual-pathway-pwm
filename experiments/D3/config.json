@@ -1,0 +1,27 @@
+{
+  "_purpose": "D3 — Linear-Probe-Transfer diagnostic. Train a per-bit logistic-regression probe on zA, evaluate same probe on zB without retrain (and symmetric B→A). Drives the decide-phase top_3 routing directly per spec.",
+  "_diagnostic": true,
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 0.0,
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 31415,
+  "probe_C_canonical": 1.0,
+  "probe_C_sweep": [0.01, 0.1, 1.0, 10.0],
+  "probe_max_iter": 1000,
+  "test_fraction": 0.30,
+  "split_seed": 271828,
+  "_notes": [
+    "Hyperparameters intentionally identical to D1/D2 (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds, lambda_c) so the (zA, zB) substrate is byte-equivalent across diagnostics.",
+    "Probe regularization (C, max_iter) is identical for both directions — otherwise transfer-ratio comparison is confounded by capacity differences (per spec).",
+    "Per-bit logistic regression on 11 bits of the ORACLE_MASKS polynomial basis. Bits where y is all-0 or all-1 in either train or test split are skipped (degenerate; AUROC undefined). Reported as skipped_bits in output.",
+    "Bootstrap CI for transfer-ratio: resample test-set ROWS 1000×; for each bootstrap recompute per-bit AUROC and average across non-skipped bits. Probes are trained ONCE on the held-out train split (not refit per bootstrap) to avoid 88-fits × 1000 = 88K refits.",
+    "honest-negative gate: if within_auroc_mean < 0.6 in either direction, the §5.7 baseline did not learn the task and this diagnostic is uninformative — emit HONEST_NEGATIVE per spec.",
+    "asymmetric flag: |transfer_ratio_AtoB - transfer_ratio_BtoA| > 0.20 (spec threshold).",
+    "decide-phase routing per spec: ratio≥0.95 → basis-ambiguity (top_3=[A,AC,G]); 0.50–0.94 → partial-linear-compatibility (top_3=[F,G,AC]); <0.50 → linearly-incompatible (top_3=[F,C,AC])."
+  ]
+}

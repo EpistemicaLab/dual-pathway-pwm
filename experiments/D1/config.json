@@ -1,0 +1,18 @@
+{
+  "_purpose": "D1 — Centered Kernel Alignment (CKA) between zA (measurement-MLP) and zB (passive-CNN) on the §5.7 baseline at lambda_C=0.0 (pre-alignment condition).",
+  "_diagnostic": true,
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 0.0,
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 12345,
+  "_notes": [
+    "lambda_c=0.0 selects the pre-alignment-training baseline — same arch as §5.7 but no cross-pathway L_C term.",
+    "Bootstrap CI is computed by resampling rows of the (zA, zB) eval matrix; reports 95% (2.5/97.5 percentile) for both linear_cka and rbf_cka.",
+    "If n_eval_paired < 100, runner aborts and writes HONEST_NEGATIVE per spec."
+  ]
+}

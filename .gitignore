@@ -1,0 +1,28 @@
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+
+# Experiment outputs (regeneratable)
+results-*.json
+results/
+*.npy
+*.npz
+checkpoints/
+logs/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/

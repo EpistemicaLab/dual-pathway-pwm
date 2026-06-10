@@ -1,0 +1,59 @@
+{
+  "_purpose": "Method H — Optimal Transport / Sinkhorn divergence (Cuturi 2013, Genevay 2018). Treat batch-level {z_A^i}, {z_B^i} as empirical distributions; entropic-regularized OT plan IS the cross-modal correspondence — handles basis-mismatch geometrically. Built post-hoc on the §5.7 baseline at lambda_C=1.0 (same substrate as AC/F/G/A/F0/C/B/I). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec.",
+  "_method": "H",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "h_latent_dim": 16,
+  "h_enc_hidden": 64,
+  "h_dec_hidden": 64,
+  "h_sinkhorn_iters": 50,
+  "h_sinkhorn_eps_floor": 1e-3,
+
+  "h_lr": 1e-3,
+  "h_epochs": 30,
+  "h_batch_size": 128,
+
+  "h_eps_grid": [0.01, 0.1, 1.0],
+  "h_lambda_c_fixed": 1.0,
+  "h_sweep_seed": 110001,
+  "h_n_seeds": 20,
+  "h_seed_base": 110011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 110234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Baseline hyperparameters (ssl_epochs=60, ft_epochs=15, ft_lr=1e-4, n_seeds_per_config=10, n_eval_seeds=20, lambda_c=1.0) intentionally identical to AC/F/G/A/F0/C/B/I so the (zA_pre, zB_pre) substrate is byte-equivalent and H's marginal benefit is isolated.",
+    "H architecture: per-pathway INDEPENDENT projection MLPs enc(z_pre 32-d) -> hidden=64 -> z_proj 16-d (mirrors G/I). Per-pathway decoders z_proj -> hidden=64 -> z_pre_recon (32-d) provide the L_A, L_B 'predictive' losses. Total loss = recon_a + recon_b + lambda_c * SinkhornEntropic(z_proj_a, z_proj_b; epsilon).",
+    "Sinkhorn-Knopp: hand-rolled, log-space (numerically stable). Uniform marginals a=b=1/B. Cost C_ij = ||z_proj_a_i - z_proj_b_j||^2. Loss = <pi, C> where pi from converged Sinkhorn fixed-point. Iterations=50 per spec; differentiable via jax.lax.scan + implicit gradients through the iterations. NOT using ott-jax to avoid an extra runtime dep on the EC2 venv.",
+    "Spec sweep: epsilon in {0.01, 0.1, 1.0} = 3 cells at sweep_seed=110001; pick best by lowest val_loss on 30%% test slice. Then 20 seeds (seed_base=110011..110030) on best cell for paired-bootstrap CI.",
+    "Adam lr=1e-3, 30 epochs, batch=128. Effective batch = min(cfg, n_train). At 70%% head split of n=540 -> n_train=378 so batch=128 yields ~3 mini-batches/epoch (same as I). Sinkhorn loss is computed PER mini-batch on the 128x128 cost matrix (or smaller on the last batch).",
+    "Spec failure mode 1 (epsilon stability): epsilon too small can cause divergence/plateau. Per-step nan-guard; if cell loss goes NaN we abort that cell; auto-HONEST_NEGATIVE if all 3 cells NaN. Floor epsilon at h_sinkhorn_eps_floor=1e-3 even if grid value is smaller (none here are smaller; safety only).",
+    "Spec failure mode 2 (batch matters): 128 is the spec's workable default; 256 doubles wall.",
+    "Spec failure mode 3 (soft alignment): Sinkhorn yields soft pi not pointwise; pass_linear (raw-coords delta_1) likely fails; pass_cka and pass_transfer can still PASS the method per the original spec evaluator.",
+    "PASS_GATE applied to z_proj_a, z_proj_b (NOT raw z_pre) on the 30%% test slice. head_split_seed=271828 same as AC/F/G/A/F0/C/B/I/D3/D4 for byte-equivalent comparability.",
+    "DEVIATION FROM SPEC documented in run.py docstring + result JSON: spec describes joint encoder retraining (replacing L_C in §5.7 training); MVP is post-hoc projection heads on baseline latents. Mirrors AC/F/G/A/F0/C/B/I post-hoc choices for tractability. delta_1 / epsilon_2 not exposed by build_baseline_pair -> pass_linear forced FALSE; pass_cka and pass_transfer carry verdict.",
+    "Diagnostic fields: sinkhorn_iterations_at_convergence (=h_sinkhorn_iters since fixed; track best-cell terminal residual), final_sinkhorn_loss, transport_plan_entropy. Recorded per spec output schema.",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100; ALL 3 cells produce non-finite val loss; ALL 20 seeds on best cell NaN.",
+    "Predicted outcome under D1+D2+D3+D4+AC+F+G+A+F0+C+B+I evidence: H may PASS pass_cka/pass_transfer per spec (Sinkhorn sidesteps G's norm-collapse failure mode and I's k=16 projection collapse since OT operates on FULL distributions; but lacks F's auxiliary u so unlikely to lift cka all the way to F's 0.9311). Most likely intermediate: cka in 0.65-0.85, modest transfer improvement. If H HONEST_NEGATIVE, paper headline narrows further (no representation-side density-matching closes the gap)."
+  ]
+}

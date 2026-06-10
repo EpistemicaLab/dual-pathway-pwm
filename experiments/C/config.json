@@ -1,0 +1,53 @@
+{
+  "_purpose": "Method C — weight-shared g_theta dynamics core with MSE alignment. Trained on top of the §5.7 baseline at lambda_C=1.0 (fix-knob ON). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec.",
+  "_method": "C",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "g_theta_depth_sweep": [1, 2, 4],
+  "g_theta_hidden": 64,
+  "g_theta_output_dim": 16,
+  "g_theta_lr": 1e-3,
+  "g_theta_epochs": 50,
+
+  "sweep_seed": 120001,
+  "sweep_val_fraction": 0.20,
+  "n_seeds": 20,
+  "seed_base": 120011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 120234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Hyperparameters of the underlying §5.7 baseline (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds) intentionally identical to D1/D2/D3/D4/AC/F/G/A/F0 so the base (zA_pre, zB_pre) substrate is byte-equivalent and C's marginal benefit is isolated. lambda_c=1.0 (fix-knob ON, same as AC/F/G/A).",
+    "Method C per spec methods/method-C-weightshare.md: shared g_theta MLP with TIED weights applied to BOTH zA_pre and zB_pre (true weight-tying, not just same architecture). Standard MSE L_C = E||g(zA) - g(zB)||^2 on post-g_theta outputs (NOT DeepCCA like AC).",
+    "Hyperparameter sweep per spec: depth in {1, 2, 4} (3-cell sweep at sweep_seed=120001, single seed for cell selection by lowest sweep_val_mse on a 20% sub-split of head_train). After picking best depth, 20 seeds (seed_base=120011..120030) are trained on the FULL head_train slice for paired-bootstrap CI; best-by-final-loss seed selected for PASS_GATE eval. Adam lr=1e-3, 50 epochs full-batch (per spec).",
+    "g_theta MLP shape per spec: depth-1 = single Linear (16->16); depth-2 = (16->64->16); depth-4 = (16->64->64->64->16). Hidden=64, output_dim=16. Input dim=32 (z_pre is 32-d at lambda_C=1.0 substrate); spec's '16-dim → 16-dim' ideal is achieved at output (z_pre_32 -> g_theta -> 16-d aligned latent).",
+    "DEVIATION FROM SPEC documented in run.py docstring: spec describes weight-shared g_theta as part of joint encoder+g_theta training. Implementation is POST-HOC: pretrained encoders at lambda_C=1.0 (already L_C-aligned per E1's joint_dual_finetune_with_lc), then post-hoc shared g_theta with MSE alignment + 3-cell depth sweep + 20-seed paired-bootstrap. Trade-off: cheaper (no encoder retrain per seed) and isolates C's marginal benefit on top of L_C-aligned base. Mirrors AC/F/G/A post-hoc choice for like-for-like comparability.",
+    "Head split: 70% of n_eval_paired=540 used to fit g_theta + per-bit probes; 30% held out for PASS_GATE evaluation (no leakage). head_split_seed=271828 same as D3/D4/AC/F/G/A for head-split byte-equivalence.",
+    "Sweep sub-split: within head_train (~378 samples), 80% (~302) used for g_theta optimization and 20% (~76) held out as sweep_val for depth selection. sweep_val sub-split uses sweep_seed=120001 numpy permutation. After best depth is picked, the 20-seed CI re-trains on the FULL head_train (302+76) so the final g_theta uses all available training data.",
+    "PASS_GATE per the original spec PASS_GATE evaluator: c1_pass = probe_auroc_A>=0.95 AND probe_auroc_B>=0.95; pass_linear = c1_pass AND delta_1<=0.20 AND epsilon_2<=0.10; pass_cka = c1_pass AND cka>=0.90; pass_transfer = c1_pass AND probe_transfer_auroc >= 0.95 * within_pathway_auroc; PASS if any gate; else HONEST_NEGATIVE.",
+    "delta_1/epsilon_2 NOT computed in this MVP (require §5.7-specific quantities not exposed by build_baseline_pair). Emitted as null with explanatory note. pass_linear gated to False; pass_cka and pass_transfer can still PASS the method (mirrors AC/F/G/A/F0).",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100 (mirrors D-series floor); ALL 3 sweep cells produce non-finite val_loss; ALL 20 seeds on best cell NaN.",
+    "Honest reservation per spec: pathway-input encoders E_A, E_B may compensate by encoding pathway-specific info into the 32-d shared input space, defeating the shared g_theta. Watch for AUROC collapse on either pathway (per_pathway probe_auroc_A / probe_auroc_B reported per-bit and aggregate).",
+    "Combined D1+D2+D3+D4+AC+F+G+A+F0 evidence preserved verbatim in state.gating.evidence and history. Predicted outcome: HONEST_NEGATIVE -- C is purely representation-side (shared dynamics core + MSE alignment), no auxiliary u signal; F0 ablation already showed that without u, even iVAE prior matching collapses below baseline (cka=0.4615 vs D1 0.6475). C's weight-shared g_theta with MSE alignment has LESS inductive bias than iVAE prior. Most likely cka in 0.5-0.75 band (between AC's 0.5771 and A's 0.7168). Still publication-worthy as the §3.1 Paper-1 architectural claim test."
+  ]
+}

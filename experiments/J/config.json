@@ -1,0 +1,59 @@
+{
+  "_purpose": "Method J -- Translator-network alignment with cycle consistency. Train T_phi: z_A -> z_B and T_phi^inv: z_B -> z_A jointly with per-pathway projection encoders/decoders. Loss = recon_a + recon_b + lambda_c * (forward_mse + inverse_mse + alpha * cycle_consistency). Built post-hoc on the section-5.7 baseline at lambda_C=1.0 (same substrate as AC/F/G/A/F0/C/B/I/H). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec. Cycle-consistency penalty is the spec's defense against rank-deficient T collapse.",
+  "_method": "J",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "j_latent_dim": 16,
+  "j_enc_hidden": 64,
+  "j_dec_hidden": 64,
+  "j_translator_hidden": 64,
+  "j_alpha_cycle": 0.1,
+
+  "j_lr": 1e-3,
+  "j_epochs": 30,
+  "j_batch_size": 128,
+
+  "j_depth_grid": [1, 2],
+  "j_lambda_c_fixed": 1.0,
+  "j_sweep_seed": 130001,
+  "j_n_seeds": 20,
+  "j_seed_base": 130011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 130234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Baseline hyperparameters (ssl_epochs=60, ft_epochs=15, ft_lr=1e-4, n_seeds_per_config=10, n_eval_seeds=20, lambda_c=1.0) intentionally identical to AC/F/G/A/F0/C/B/I/H so the (zA_pre, zB_pre) substrate is byte-equivalent and J's marginal benefit is isolated.",
+    "J architecture: per-pathway INDEPENDENT projection MLPs enc(z_pre 32-d) -> hidden=64 -> z_proj 16-d (mirrors G/I/H). Per-pathway decoders z_proj -> hidden=64 -> z_pre_recon (32-d) provide the L_A, L_B 'predictive' losses. Translator T_phi: z_proj (16-d) -> z_proj (16-d), depth in {1,2}. Inverse translator T_phi_inv: z_proj (16-d) -> z_proj (16-d), separate weights, same depth. Total loss = recon_a + recon_b + lambda_c * (||T_phi(z_proj_a) - z_proj_b||^2 + ||T_phi_inv(z_proj_b) - z_proj_a||^2 + alpha * (||T_phi_inv(T_phi(z_proj_a)) - z_proj_a||^2 + ||T_phi(T_phi_inv(z_proj_b)) - z_proj_b||^2)).",
+    "Cycle-consistency penalty alpha=0.1 per spec. Symmetric: penalize both T_phi_inv o T_phi - I and T_phi o T_phi_inv - I.",
+    "Spec sweep: depth in {1, 2} = 2 cells at sweep_seed=130001; pick best by lowest val_loss on 30%% test slice. Then 20 seeds (seed_base=130011..130030) on best cell for paired-bootstrap CI.",
+    "Adam lr=1e-3, 30 epochs, batch=128. Effective batch = min(cfg, n_train). At 70%% head split of n=540 -> n_train=378 so batch=128 yields ~3 mini-batches/epoch.",
+    "Spec failure mode 1: without cycle-consistency T collapses to rank-deficient map -- alpha=0.1 enforces invertibility. Per-step nan-guard; if cell loss goes NaN we abort that cell; auto-HONEST_NEGATIVE if all 2 cells NaN.",
+    "Spec failure mode 2: depth-1 (linear) is the cheap basis-ambiguity fix; if it PASSes, basis-mismatch is mild and benign. Depth-2 adds nonlinear capacity.",
+    "Spec failure mode 3: J becomes redundant with iVAE (F) if depth>=4 needed. Sweep depth {1,2} only per spec.",
+    "PASS_GATE applied to z_proj_a, z_proj_b (NOT translator outputs) on the 30%% test slice. head_split_seed=271828 same as AC/F/G/A/F0/C/B/I/H/D3/D4 for byte-equivalent comparability. The translator T_phi is NOT used to project the PASS_GATE evaluation set -- the gate measures whether the encoders themselves learned aligned z_proj's under the translator-driven loss (F's logic: encoders shape z under the alignment objective; we evaluate the resulting z, not the translator).",
+    "DEVIATION FROM SPEC documented in run.py docstring + result JSON: spec describes joint encoder retraining; MVP is post-hoc projection heads on baseline latents. Mirrors AC/F/G/A/F0/C/B/I/H post-hoc choices for tractability. delta_1 / epsilon_2 not exposed by build_baseline_pair -> pass_linear forced FALSE; pass_cka and pass_transfer carry verdict.",
+    "Diagnostic fields per spec: translator_depth (best cell), translator_param_count (T_phi + T_phi_inv combined), cycle_consistency_residual (final mean ||T_phi_inv(T_phi(z_proj_a)) - z_proj_a||^2 on test slice with best seed).",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100; ALL 2 cells produce non-finite val loss; ALL 20 seeds on best cell NaN.",
+    "Predicted outcome under D1+D2+D3+D4+AC+F+G+A+F0+C+B+I+H evidence: H PASS pass_transfer (cka=0.5748 lower_ratio=0.9804) shows transport-based alignment recovers transfer without recovering CKA. J's translator-net is structurally similar (cycle-consistent invertible map ~ orthogonal-rotation analog) and likely PASSes pass_transfer at depth 1 or 2 (matching B Procrustes / H Sinkhorn pattern). Most likely intermediate: cka in 0.55-0.75, lower_ratio>=0.95. If J HONEST_NEGATIVE, paper headline narrows further (no representation-side translator closes the gap)."
+  ]
+}

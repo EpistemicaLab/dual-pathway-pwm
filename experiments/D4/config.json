@@ -1,0 +1,32 @@
+{
+  "_purpose": "D4 — Translator-Network Capacity probe. Train translator MLPs T:zA→zB at depths {1,2,4,8} with 5 seeds each per direction (A→B and B→A); the minimal depth at which val_mse_rel < 0.10 quantifies cross-pathway structural distance. Drives the decide-phase mechanism label alongside D1+D2+D3.",
+  "_diagnostic": true,
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 0.0,
+  "depths": [1, 2, 4, 8],
+  "hidden": 64,
+  "translator_lr": 1e-3,
+  "translator_steps": 600,
+  "translator_n_seeds": 5,
+  "translator_seed_base": 4242,
+  "test_fraction": 0.20,
+  "split_seed": 271828,
+  "early_stop_patience": 80,
+  "pass_threshold_val_mse_rel": 0.10,
+  "_notes": [
+    "Hyperparameters of the underlying §5.7 baseline (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds, lambda_c) intentionally identical to D1/D2/D3 so the (zA, zB) substrate is byte-equivalent across all four diagnostics.",
+    "Translator MLP per spec methods/D4-translator-capacity.md: depth-d means d Linear layers with ReLU between (depth=1 is pure Linear). Hidden=64 throughout. Loss = mean per-row squared error against cosine-normalized target z_B/||z_B||. val_mse_rel = mean per-row ||T(z_A)-z_B_unit||^2 (||z_B_unit||^2=1 by construction so this is the relative residual).",
+    "Training: full-batch Adam (lr=1e-3, b1=0.9, b2=0.999, eps=1e-8), translator_steps=600 (≈ spec's 200 epochs × 3 effective full-batch steps for n_train≈432), early-stop on val loss with patience=80 steps (no improvement). Spec's mini-batch=64 collapsed to full-batch for JIT simplicity; n_train≈432 fits trivially in L40S memory and total ops <1e7 per fit.",
+    "5 seeds per (depth, direction): vary translator init only (data split is fixed across seeds). 5 PASS verdicts averaged; depth PASSes if mean val_mse_rel < 0.10.",
+    "Pass threshold per spec: val_mse_rel < 0.10 = T reconstructs target to within 10% squared-error relative to unit-norm target (linear-scale) — the spec's 'low residual' criterion.",
+    "Direction asymmetry recorded: spec notes A→B converging at depth 2 while B→A needs depth 8 (or vice versa) reveals which pathway carries more reconstruction-only-from-the-other information.",
+    "Diagnosis routing per spec table: min_capacity=1 (linear) → basis-ambiguity; =2 → mild-nonlinear; =4 → heavy-nonlinear; =8 or none-converging → information-mismatch.",
+    "Honest-negative gate: n_eval_paired < 100 (mirrors D1/D2/D3 floor).",
+    "Per-depth params and wall_s recorded for the reviewer-facing scaling curve (spec calls this out explicitly)."
+  ]
+}

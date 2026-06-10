@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dual-pathway-pwm"
+version = "0.1.0a1"
+description = "Code release for 'A Dual-Pathway Theory of Physical World Models' (arXiv preprint, 2026)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+keywords = [
+    "world-models",
+    "causal-representation-learning",
+    "physical-reasoning",
+    "do-intervention",
+    "ivae",
+    "identifiability",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-learn>=1.3",
+    "jax>=0.4.20",
+    "jaxlib>=0.4.20",
+    "matplotlib>=3.7",
+]
+
+[project.urls]
+Homepage = "https://epistemicalab.github.io/"
+Repository = "https://github.com/EpistemicaLab/dual-pathway-pwm"
+Issues = "https://github.com/EpistemicaLab/dual-pathway-pwm/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

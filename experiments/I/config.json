@@ -1,0 +1,60 @@
+{
+  "_purpose": "Method I — MINE / Donsker-Varadhan MI lower bound (Belghazi+ ICML 2018). Replace L_C=E||z_A-z_B||^2 with a tighter neural lower bound on I(z_A; z_B) than InfoNCE's log-batch-size cap. Built post-hoc on the §5.7 baseline at lambda_C=1.0 (same substrate as AC/F/G/A/F0/C/B). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec.",
+  "_method": "I",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "i_latent_dim": 16,
+  "i_enc_hidden": 64,
+  "i_dec_hidden": 64,
+  "i_stats_hidden": 64,
+  "i_stats_depth": 2,
+  "i_stats_clip": 10.0,
+  "i_ema_alpha": 0.01,
+
+  "i_lr_enc": 1e-3,
+  "i_lr_stats": 1e-4,
+  "i_epochs": 50,
+  "i_batch_size": 128,
+
+  "i_lambda_c_grid": [0.1, 1.0, 10.0],
+  "i_sweep_seed": 100001,
+  "i_n_seeds": 20,
+  "i_seed_base": 100011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 100234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Hyperparameters of the underlying §5.7 baseline (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds, lambda_c=1.0) intentionally identical to AC/F/G/A/F0/C/B so the base (zA_pre, zB_pre) substrate is byte-equivalent and I's marginal benefit is isolated on the same L_C-aligned base.",
+    "I architecture per spec methods/method-I-mine.md: per-pathway INDEPENDENT projection MLPs enc(z_pre 32-d) -> hidden=64 -> z_proj 16-d (mirrors G). Per-pathway decoders z_proj -> hidden=64 -> z_pre_recon (32-d) provide the L_A, L_B 'predictive' losses called for in spec total L_A + L_B + lambda_C * (-I_hat). Statistics network T_theta = small MLP ((16+16) -> 64 -> 1) scoring joint vs marginal samples; depth=2 hidden=64 per spec.",
+    "MINE loss (Belghazi+ 2018 Donsker-Varadhan): I_hat = E_p(zA,zB)[T(zA,zB)] - log E_{p(zA)p(zB)}[exp T(zA,zB)]. Marginal samples via batch-shuffle of z_B (jnp.roll(z_b, shift=1, axis=0) -- cheap deterministic shuffle that preserves batch-shape). Tanh-clip T_theta output to [-i_stats_clip, +i_stats_clip] (=10) for numerical stability per spec. Variance-reduction: EMA baseline on log-mean-exp term per Belghazi sec 4.1 (alpha=0.01 default).",
+    "Hyperparameter sweep per spec: lambda_C in {0.1, 1.0, 10.0} = 3 cells (no temperature -- MINE has no tau). Each cell run with seed i_sweep_seed=100001 (single seed for cell selection). Best cell by lowest val_neg_mi (i.e., highest val MI estimate) on 30%% test slice. Then 20 seeds (i_seed_base=100011..100030) on the best cell for paired-bootstrap CI.",
+    "Optimizers per spec: separate Adam lr_enc=1e-3 (for encoders+decoders) and lr_stats=1e-4 (slower for the statistics network, standard MINE recipe to prevent T_theta from runaway-growing while encoders are still learning useful features). 50 epochs, batch=128 per spec (vs G's 256). Effective batch = min(cfg, n_train). At 70%% head split of n=540 we have n_train=378 so batch=128 means ~3 mini-batches/epoch.",
+    "Spec failure mode 1 (MINE notoriously unstable -- log-mean-exp blows up if T_theta unbounded): tanh-clip on T_theta output enforced. Per-seed NaN guard. final_mi_estimate + stats_net_norm recorded per spec output schema.",
+    "Spec failure mode 2 (slow convergence): 50 epochs minimum per spec; no early stopping.",
+    "Spec failure mode 3 (more expensive than InfoNCE for marginal extra MI tightness): documented; only worth running if G fails (G HONEST_NEGATIVE confirmed at 2026-06-05T06:07:03Z, so MINE is on-spec).",
+    "PASS_GATE applied to z_proj_a, z_proj_b (NOT raw z_pre) on the 30%% test slice. Per-bit logreg probes trained on 70%% head_train, evaluated for within-pathway AUROC and cross-pathway transfer AUROC. CKA on test split with 1000-bootstrap CI. Same head_split_seed=271828 as AC/F/G/A/F0/C/B/D3/D4.",
+    "DEVIATION FROM SPEC documented in run.py docstring + result JSON: spec describes joint encoder retraining (replacing L_C in §5.7 training); MVP is post-hoc projection heads on top of L_C-aligned baseline latents. Mirrors AC/F/G/A/F0/C/B post-hoc choices for tractability. delta_1 / epsilon_2 not computed (require §5.7-specific quantities not exposed by build_baseline_pair); pass_linear forced FALSE.",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100; ALL 3 cells produce non-finite val loss; ALL 20 seeds on best cell NaN.",
+    "Combined evidence preserved verbatim in state.gating.evidence and history. F PASS (cka=0.9311 / lower_ratio=0.9906 best cell lambda_C=0 beta=0.5) sets paper headline; B PASS (borderline pass_transfer only). Predicted I HONEST_NEGATIVE per spec's 'only worth running if G fails' note + G's norm-collapse failure mode shared with MINE."
+  ]
+}

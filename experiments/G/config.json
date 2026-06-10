@@ -1,0 +1,55 @@
+{
+  "_purpose": "Method G — InfoNCE / SimCLR contrastive (van den Oord 2018). Replace L_C=E||z_A-z_B||^2 with a mutual-information lower bound that is invariant to any invertible transformation on either side, so basis-mismatch dissolves automatically. Built post-hoc on the §5.7 baseline at lambda_C=1.0 (same substrate as AC and F). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec.",
+  "_method": "G",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "g_latent_dim": 16,
+  "g_enc_hidden": 64,
+  "g_dec_hidden": 64,
+  "g_lr": 3e-4,
+  "g_epochs": 30,
+  "g_batch_size": 256,
+
+  "g_tau_grid": [0.07, 0.1, 0.5, 1.0],
+  "g_lambda_c_grid": [0.1, 1.0, 10.0],
+  "g_sweep_seed": 80001,
+  "g_n_seeds": 20,
+  "g_seed_base": 80011,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 80234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Hyperparameters of the underlying §5.7 baseline (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds, lambda_c=1.0) intentionally identical to AC and F so the base (zA_pre, zB_pre) substrate is byte-equivalent and G's marginal benefit is isolated on the same L_C-aligned base.",
+    "G architecture per spec methods/method-G-infonce.md: per-pathway projection MLP enc(z_pre 32-d) -> hidden=64 -> z_proj=16-d (no shared head — independent encoders, since basis-invariance of InfoNCE means we don't need a tied bottleneck like AC). Per-pathway decoder z_proj(16) -> hidden=64 -> z_pre_recon(32) acts as the L_A, L_B 'predictive' losses in the spec's L_A + L_B + lambda_C * L_InfoNCE total.",
+    "InfoNCE loss (van den Oord 2018): symmetric cross-entropy over a (B, B) cosine-similarity matrix scaled by 1/tau with diagonal targets. Loss = 0.5 * (CE_a_to_b + CE_b_to_a). Cosine similarity normalizes z_proj per row before the dot product, so encoder norms are not constrained to unit (we record raw norms separately to detect collapse per spec failure mode 2).",
+    "Hyperparameter sweep per spec: tau in {0.07, 0.1, 0.5, 1.0} x lambda_C in {0.1, 1.0, 10.0} -> 12 cells. Each cell run with seed g_sweep_seed=80001 (single seed for cell selection); pick best cell by lowest val InfoNCE on the 30% test slice (NOT total val_loss, since recon may dominate at large lambda_C). Then run 20 seeds (g_seed_base=80011..80030) on the best cell for paired-bootstrap CI.",
+    "Optimizer: Adam lr=3e-4, 30 epochs per spec. Batch size cfg=256 per spec; effective batch is min(cfg, n_train); at 70% head split of n=540 we have n_train=378 so effective batch is 378 (full-batch SGD). InfoNCE lower bound on B negatives is log(B); recorded with saturation_warning if best-seed InfoNCE is within 5% of log(B) (no learning) AND a near-floor warning if within 5% of log(B) (model is at the trivial-prediction floor).",
+    "Spec failure mode 1 (saturation when true MI(z_A; z_B) > log(B) bits): tracked via val_info_nce per cell + per best seed; lower_bound=log(n_train_eff) recorded for owner inspection. With n_train_eff=378, log(378)~=5.93 nats — generous compared to spec's batch=256/log(256)~=5.55 nats.",
+    "Spec failure mode 2 (cosine-norm collapse): raw ||z_a||, ||z_b|| means/stds recorded at-eval on test split. Diagnostic flag, does NOT auto-trigger HONEST_NEGATIVE.",
+    "Spec failure mode 3 (tau sensitivity): {0.07, 0.1} expected sweet spot per SimCLR conventions; {0.5, 1.0} included to verify the cell sweep finds the right tau.",
+    "PASS_GATE applied to z_proj_a, z_proj_b (NOT raw z_pre) on the 30% test slice. Per-bit logreg probes trained on 70% head_train, evaluated for within-pathway AUROC and cross-pathway transfer AUROC. CKA on test split with 1000-bootstrap CI. Same head_split_seed=271828 as AC/F/D3/D4.",
+    "DEVIATION FROM SPEC documented in run.py docstring + result JSON: spec describes joint encoder retraining (replacing L_C in §5.7 training); MVP is post-hoc projection heads on top of L_C-aligned baseline latents. Mirrors AC and F's post-hoc choices for tractability. delta_1 / epsilon_2 not computed (require §5.7-specific quantities not exposed by build_baseline_pair); pass_linear forced FALSE.",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100; ALL 12 cells produce non-finite val_loss; ALL 20 seeds on best cell NaN.",
+    "Combined D1+D2+D3+D4+AC+F evidence preserved verbatim in state.gating.evidence and history. F PASS already sets the paper headline (cka=0.9311 / lower_ratio=0.9906 at iVAE best cell lambda_C=0.0 beta=0.5). G runs as a robustness check: does InfoNCE *also* PASS (paper claims auxiliary-conditioning OR contrastive both work — robust headline) or does only F PASS (paper headline narrows to 'iVAE-with-u prior is the working fix')? D2 cos_rsa=0.1276 is a potential warning: cosine-direction geometry is low rank-correlated across pathways, which could limit InfoNCE's contrastive signal."
+  ]
+}

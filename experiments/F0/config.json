@@ -1,0 +1,59 @@
+{
+  "_purpose": "Method F — iVAE with intervention u as auxiliary variable. Built on top of the §5.7 baseline at lambda_C=1.0 (same substrate as AC). Trains two iVAE encoders sharing a u-conditional Gaussian prior; identifiability flows from the prior factorization p(z|u). PASS_GATE 4-gate evaluator (c1/pass_linear/pass_cka/pass_transfer) per the original spec.",
+  "_method": "F",
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 1.0,
+
+  "ivae_latent_dim": 16,
+  "ivae_aux_dim": 4,
+  "ivae_enc_hidden": 64,
+  "ivae_dec_hidden": 64,
+  "ivae_prior_hidden": 32,
+  "ivae_log_var_min": -6.0,
+  "ivae_log_var_max": 4.0,
+  "ivae_lr": 1e-3,
+  "ivae_epochs": 50,
+  "ivae_batch_size": 64,
+
+  "ivae_beta_grid": [0.5, 1.0, 2.0],
+  "ivae_lambda_c_grid": [0.0, 1.0],
+  "ivae_sweep_seed": 70001,
+  "ivae_n_seeds": 20,
+  "ivae_seed_base": 70011,
+  "ivae_collapse_kl_threshold": 0.1,
+
+  "head_train_fraction": 0.70,
+  "head_split_seed": 271828,
+  "probe_C": 1.0,
+  "probe_max_iter": 1000,
+
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 70234,
+
+  "pass_gate": {
+    "c1_min_per_pathway_auroc": 0.95,
+    "delta_1_max": 0.20,
+    "epsilon_2_max": 0.10,
+    "cka_min": 0.90,
+    "transfer_ratio_min": 0.95
+  },
+
+  "_notes": [
+    "Hyperparameters of the underlying §5.7 baseline (ssl_epochs, ft_epochs, ft_lr, n_seeds_per_config, n_eval_seeds, lambda_c=1.0) intentionally identical to AC so the base (zA_pre, zB_pre) substrate is byte-equivalent and F's marginal benefit is isolated against AC's HONEST_NEGATIVE.",
+    "iVAE architecture per spec methods/method-F-ivae-with-u.md: latent_dim=16; auxiliary u = [one_hot(3-class), c] = 4-dim (spec says 1-hot over 3 physics classes + scalar amplitude). Per-pathway encoder q(z|x_pre, u): MLP from (32+4) -> hidden=64 -> (mu_q, log_var_q) of dim 16. Per-pathway decoder p(x_pre|z): MLP from z(16) -> hidden=64 -> x_recon(32). Shared prior network mu_prior(u), log_var_prior(u): MLP from u(4) -> hidden=32 -> (16,16). log-variances clipped to [-6, 4] for numerical stability.",
+    "iVAE loss per pathway: ELBO = 0.5*||x_recon - x_pre||^2 (unit-variance Gaussian likelihood) + beta * KL(q(z|x_pre,u) || p(z|u)). KL computed in closed form between two diagonal Gaussians. Cross-pathway alignment: lambda_C * mean ||z_A_sample - z_B_sample||^2 on reparameterized samples (so gradient flows through both encoders). Total = ELBO_A + ELBO_B + lambda_C * align.",
+    "Hyperparameter sweep per spec: beta in {0.5, 1.0, 2.0}, lambda_C in {0.0, 1.0} -> 6 cells. Each cell run with seed ivae_sweep_seed=70001 (single seed for cell selection); pick best cell by lowest val ELBO on the 30% test slice. Then run 20 seeds (ivae_seed_base=70011..70030) on the best cell for paired-bootstrap CI.",
+    "PASS_GATE applied to deterministic posterior means (mu_q, NOT reparameterized samples) on all splits — train probes on z_A^mu, z_B^mu over the 70% slice, evaluate AUROC + transfer + CKA on the 30% holdout. Same head split seed (271828) as AC/D3/D4 for consistency.",
+    "Posterior collapse honest reservation: KL term per pathway tracked across training; if final mean(KL/latent_dim) < 0.1 nats on the best cell, record collapse_warning=true (per the original spec and spec failure mode 3). Free-bits not enforced in MVP — flag instead.",
+    "STRONGEST CLAIM (paper-worthy if true): all three C2 gates PASS at lambda_C=0 — meaning the iVAE prior alone (no L_C MSE term) is sufficient for cross-modal alignment. Result JSON's best_cell + per-cell sweep records will reveal whether this holds.",
+    "DEVIATION FROM SPEC documented in run.py docstring: spec describes iVAE on RAW INPUTS x_A, x_B; this MVP uses post-hoc on z_A_pre, z_B_pre (the 32-d §5.7 baseline latents) because raw image+feature pipelines are exposed only inside e1's data builders. Trade-off: cheaper (no encoder retrain per seed) and isolates F's marginal benefit on top of L_C-aligned base, mirroring AC's post-hoc choice. Identifiability theory (Khemakhem 2020) is unchanged — iVAE can be applied to any observation space; here the 'observations' are z_pre. Owner can flip to raw-input training by routing q encoders through e1's mlp_forward / encoder_forward instead.",
+    "delta_1 (linear-translator residual) and epsilon_2 (orthogonal-projection residual) NOT computed in MVP — same as AC, require §5.7-specific quantities not exposed here. Emitted as null with explanatory note. pass_linear gated to False; pass_cka and pass_transfer can still PASS the method.",
+    "HONEST_NEGATIVE conditions: n_eval_paired<100; ALL 20 seeds NaN on best cell; posterior collapse on best cell (collapse_warning=true does NOT auto-trigger HONEST_NEGATIVE — it's a diagnostic flag; gate decisions still drive verdict).",
+    "Combined D1+D2+D3+D4+AC evidence preserved verbatim in state.gating.evidence and history; predicts F PASSes at least one of {cka, transfer} at lambda_C=0 if the bit-9 information bottleneck (D3+AC reading) is u-recoverable, since F's prior conditions on the intervention u directly. F FAILing all gates would mean the missing info is structural, not representational — paper headline shifts and we run G as the last top_3 member."
+  ]
+}

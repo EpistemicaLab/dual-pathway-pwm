@@ -1,0 +1,19 @@
+{
+  "_purpose": "D2 — Representational Similarity Analysis (Spearman rank-correlation on pairwise-distance matrices) between zA (measurement-MLP) and zB (passive-CNN) on the §5.7 baseline at lambda_C=0.0 (pre-alignment condition).",
+  "_diagnostic": true,
+  "smoke": false,
+  "ssl_epochs": 60,
+  "ft_epochs": 15,
+  "ft_lr": 1e-4,
+  "n_seeds_per_config": 10,
+  "n_eval_seeds": 20,
+  "lambda_c": 0.0,
+  "n_bootstrap": 1000,
+  "bootstrap_seed": 24690,
+  "_notes": [
+    "Hyperparameters intentionally identical to D1 so the (zA, zB) pair is the same up to bootstrap-RNG; this lets D1 (CKA) and D2 (RSA) be compared on a common substrate.",
+    "Reports both Euclidean and cosine RSA (Spearman of pdist vectors), each with 95% (2.5/97.5 percentile) bootstrap CI computed by resampling rows of the (zA, zB) eval matrix.",
+    "If n_eval_paired < 100, runner aborts and writes HONEST_NEGATIVE per spec.",
+    "Tie warning: if any pdist vector has more than 25% tied entries, result records a warning (Spearman degrades with ties)."
+  ]
+}
